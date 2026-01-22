@@ -75,7 +75,11 @@ def run_experiment(cfg: Dict, run_id: Optional[str] = None) -> str:
                 max_grad_norm=max_grad_norm,
                 poisson_sampling=False,
             )
-            noise_multiplier = float(privacy_engine.noise_multiplier)
+            nm = getattr(privacy_engine, "noise_multiplier", None)
+            if nm is None:
+                nm = getattr(optimizer, "noise_multiplier", None)
+            if nm is not None:
+                noise_multiplier = float(nm)
         else:
             model, optimizer, train_loader, privacy_engine = make_private(
                 model=model,
