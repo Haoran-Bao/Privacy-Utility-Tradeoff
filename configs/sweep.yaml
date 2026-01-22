@@ -1,9 +1,9 @@
-base_config: configs/cifar10_convnet.yaml
+base_config: cifar10_convnet.yaml
 methods: [dp_sgd, dp_sam]
 seeds: [0]
 epsilons: [2.0, 5.0, 10.0]
 method_configs:
-  dp_sgd: configs/dp_sgd.yaml
-  dp_sam: configs/dp_sam.yaml
+  dp_sgd: dp_sgd.yaml
+  dp_sam: dp_sam.yaml
 # Optional mapping for dp_sam noise multipliers aligned with epsilons
 # dp_sam_noise_multipliers: [1.6, 1.2, 0.9]

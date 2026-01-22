@@ -27,6 +27,8 @@ def main() -> None:
     with open(args.config, "r", encoding="utf-8") as f:
         sweep_cfg = yaml.safe_load(f) or {}
     base_cfg_path = sweep_cfg.get("base_config")
+    if base_cfg_path and not os.path.isabs(base_cfg_path):
+        base_cfg_path = os.path.join(os.path.dirname(args.config), base_cfg_path)
     base_cfg = load_config(base_cfg_path) if base_cfg_path else {}
 
     methods = sweep_cfg.get("methods", [])
@@ -37,6 +39,8 @@ def main() -> None:
 
     for method in methods:
         method_cfg_path = method_cfgs.get(method)
+        if method_cfg_path and not os.path.isabs(method_cfg_path):
+            method_cfg_path = os.path.join(os.path.dirname(args.config), method_cfg_path)
         method_cfg = load_config(method_cfg_path) if method_cfg_path else {}
         base = copy.deepcopy(base_cfg)
         cfg_base = _prepare_cfg(base, method_cfg)

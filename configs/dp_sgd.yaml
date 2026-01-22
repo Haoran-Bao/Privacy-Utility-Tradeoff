@@ -1,4 +1,4 @@
-base_config: configs/cifar10_convnet.yaml
+base_config: cifar10_convnet.yaml
 method: dp_sgd
 
 dp:
