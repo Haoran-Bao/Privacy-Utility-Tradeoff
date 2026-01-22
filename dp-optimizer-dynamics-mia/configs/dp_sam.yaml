@@ -1,0 +1,12 @@
+base_config: configs/cifar10_convnet.yaml
+method: dp_sam
+
+dp:
+  privacy_mode: fixed_noise
+  noise_multiplier: 1.2
+
+sam:
+  rho: 0.05
+
+dp_sam:
+  allow_non_dp: false

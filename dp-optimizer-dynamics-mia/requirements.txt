@@ -1,0 +1,10 @@
+# Core
+numpy
+pyyaml
+scikit-learn
+matplotlib
+
+# Torch
+torch
+torchvision
+opacus

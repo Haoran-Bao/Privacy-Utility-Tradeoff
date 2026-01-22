@@ -1,0 +1,43 @@
+seed: 0
+device: auto
+method: dp_sgd
+epochs: 2
+batch_size: 128
+test_batch_size: 256
+num_workers: 2
+log_every: 1
+save_every: 1
+
+data:
+  root: data
+  use_augmentation: true
+  train_subset: 1024
+  test_subset: 1024
+
+model:
+  name: convnet
+  num_classes: 10
+
+optimizer:
+  lr: 0.1
+  momentum: 0.9
+  weight_decay: 0.0
+
+dp:
+  max_grad_norm: 1.0
+  noise_multiplier: 1.1
+  delta: null
+  privacy_mode: fixed_noise
+  target_epsilon: 5.0
+
+sam:
+  rho: 0.05
+
+mia:
+  eval_every: 1
+  member_size: 1024
+  nonmember_size: 1024
+  use_test_as_nonmember: true
+
+output:
+  runs_dir: outputs/runs

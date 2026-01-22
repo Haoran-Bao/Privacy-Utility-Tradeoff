@@ -1,0 +1,6 @@
+base_config: configs/cifar10_convnet.yaml
+method: dp_sgd
+
+dp:
+  privacy_mode: target_epsilon
+  target_epsilon: 5.0
