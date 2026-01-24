@@ -31,6 +31,17 @@ def main() -> None:
         base_cfg_path = os.path.join(os.path.dirname(args.config), base_cfg_path)
     base_cfg = load_config(base_cfg_path) if base_cfg_path else {}
 
+    sweep_meta_keys = {
+        "base_config",
+        "methods",
+        "seeds",
+        "epsilons",
+        "method_configs",
+        "dp_sam_noise_multipliers",
+        "dp_sam_privacy_mode",
+    }
+    sweep_overrides = {k: v for k, v in sweep_cfg.items() if k not in sweep_meta_keys}
+
     methods = sweep_cfg.get("methods", [])
     seeds = sweep_cfg.get("seeds", [])
     epsilons = sweep_cfg.get("epsilons", [])
@@ -45,6 +56,8 @@ def main() -> None:
         method_cfg = load_config(method_cfg_path) if method_cfg_path else {}
         base = copy.deepcopy(base_cfg)
         cfg_base = _prepare_cfg(base, method_cfg)
+        if sweep_overrides:
+            cfg_base = deep_merge(cfg_base, sweep_overrides)
 
         for eps_idx, eps in enumerate(epsilons):
             for seed in seeds:
