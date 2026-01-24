@@ -1,0 +1,5 @@
+# Output artifacts
+outputs/
+
+# Downloaded datasets
+data/
