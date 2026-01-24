@@ -7,3 +7,5 @@ method_configs:
   dp_sam: dp_sam.yaml
 # Optional mapping for dp_sam noise multipliers aligned with epsilons
 # dp_sam_noise_multipliers: [1.6, 1.2, 0.9]
+# To sweep DP-SAM by target epsilon, set:
+dp_sam_privacy_mode: target_epsilon

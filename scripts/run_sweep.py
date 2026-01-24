@@ -36,6 +36,7 @@ def main() -> None:
     epsilons = sweep_cfg.get("epsilons", [])
     method_cfgs = sweep_cfg.get("method_configs", {})
     dp_sam_noise = sweep_cfg.get("dp_sam_noise_multipliers", [])
+    dp_sam_privacy_mode = sweep_cfg.get("dp_sam_privacy_mode", "fixed_noise")
 
     for method in methods:
         method_cfg_path = method_cfgs.get(method)
@@ -57,9 +58,13 @@ def main() -> None:
                     cfg["dp"]["privacy_mode"] = "target_epsilon"
                     cfg["dp"]["target_epsilon"] = float(eps)
                 else:
-                    cfg["dp"]["privacy_mode"] = "fixed_noise"
-                    if dp_sam_noise and eps_idx < len(dp_sam_noise):
-                        cfg["dp"]["noise_multiplier"] = float(dp_sam_noise[eps_idx])
+                    if dp_sam_privacy_mode == "target_epsilon":
+                        cfg["dp"]["privacy_mode"] = "target_epsilon"
+                        cfg["dp"]["target_epsilon"] = float(eps)
+                    else:
+                        cfg["dp"]["privacy_mode"] = "fixed_noise"
+                        if dp_sam_noise and eps_idx < len(dp_sam_noise):
+                            cfg["dp"]["noise_multiplier"] = float(dp_sam_noise[eps_idx])
 
                 run_experiment(cfg)
 

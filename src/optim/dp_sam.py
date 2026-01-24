@@ -1,11 +1,19 @@
-from typing import List, Tuple
+from typing import Callable, List, Tuple
 
 import torch
+import torch.nn.functional as F
+
+from src.dp.accounting import create_accountant, get_sample_rate
+from src.utils.metrics import accuracy
 
 try:
     from opacus.grad_sample import GradSampleModule
 except Exception:  # pragma: no cover
     from opacus import GradSampleModule
+
+
+# DPSAT (Differentially Private Sharpness-Aware Training, ICML 2023)-style DP-SAM.
+# We compute DP gradients twice per batch (perturb + update) and account for both.
 
 
 def wrap_model_for_grad_sample(model: torch.nn.Module) -> torch.nn.Module:
@@ -111,3 +119,69 @@ def apply_dp_grads(model: torch.nn.Module, dp_grads: List[torch.Tensor]) -> None
         if grad is None:
             continue
         p.grad = grad.detach()
+
+
+def build_dpsat_components(
+    model: torch.nn.Module,
+    train_loader,
+    cfg: dict,
+) -> Tuple[torch.nn.Module, torch.optim.Optimizer, object, object, Callable]:
+    model = wrap_model_for_grad_sample(model)
+
+    opt_cfg = cfg.get("optimizer", {})
+    optimizer = torch.optim.SGD(
+        model.parameters(),
+        lr=float(opt_cfg.get("lr", 0.1)),
+        momentum=float(opt_cfg.get("momentum", 0.0)),
+        weight_decay=float(opt_cfg.get("weight_decay", 0.0)),
+    )
+
+    dp_cfg = cfg.get("dp", {})
+    max_grad_norm = float(dp_cfg.get("max_grad_norm", 1.0))
+    noise_multiplier = float(dp_cfg.get("noise_multiplier", 1.0))
+    rho = float(cfg.get("sam", {}).get("rho", 0.05))
+
+    accountant = create_accountant()
+    batch_size = int(cfg.get("batch_size", 128))
+    sample_rate = get_sample_rate(batch_size, len(train_loader.dataset))
+
+    def step_fn(batch, device: torch.device) -> Tuple[float, float, int]:
+        inputs, targets = batch
+        inputs = inputs.to(device)
+        targets = targets.to(device)
+
+        optimizer.zero_grad(set_to_none=True)
+        clear_grad_samples(model)
+
+        logits = model(inputs)
+        losses = F.cross_entropy(logits, targets, reduction="none")
+        loss = losses.sum()
+        loss.backward()
+
+        dp_grads, _ = compute_dp_grads(model, max_grad_norm, noise_multiplier)
+        perturbations = sam_perturb_(model, dp_grads, rho)
+        accountant.step(noise_multiplier=noise_multiplier, sample_rate=sample_rate)
+
+        optimizer.zero_grad(set_to_none=True)
+        clear_grad_samples(model)
+
+        logits_perturbed = model(inputs)
+        losses_perturbed = F.cross_entropy(logits_perturbed, targets, reduction="none")
+        loss_perturbed = losses_perturbed.sum()
+        loss_perturbed.backward()
+
+        dp_grads_2, _ = compute_dp_grads(model, max_grad_norm, noise_multiplier)
+        sam_restore_(model, perturbations)
+        apply_dp_grads(model, dp_grads_2)
+        optimizer.step()
+        accountant.step(noise_multiplier=noise_multiplier, sample_rate=sample_rate)
+
+        optimizer.zero_grad(set_to_none=True)
+        clear_grad_samples(model)
+
+        batch_size = targets.size(0)
+        batch_loss = float(losses.mean().item())
+        batch_acc = accuracy(logits, targets)
+        return batch_loss, batch_acc, batch_size
+
+    return model, optimizer, train_loader, accountant, step_fn

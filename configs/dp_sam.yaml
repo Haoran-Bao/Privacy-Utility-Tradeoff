@@ -1,9 +1,10 @@
 base_config: cifar10_convnet.yaml
-method: dp_sam
+method: dpsat
 
 dp:
   privacy_mode: fixed_noise
   noise_multiplier: 1.2
+  # target_epsilon: 5.0
 
 sam:
   rho: 0.05

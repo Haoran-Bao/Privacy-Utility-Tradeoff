@@ -1,15 +1,9 @@
-from typing import Dict, Tuple
+from typing import Callable, Dict, Tuple
 
 import torch
 import torch.nn.functional as F
 
-from src.optim.dp_sam import (
-    apply_dp_grads,
-    clear_grad_samples,
-    compute_dp_grads,
-    sam_perturb_,
-    sam_restore_,
-)
+from src.optim.dp_sam import clear_grad_samples
 from src.optim.sam import SAM
 from src.utils.metrics import accuracy
 
@@ -47,60 +41,22 @@ def train_epoch_dp_sgd(
     }
 
 
-def train_epoch_dp_sam(
+def train_epoch_with_step_fn(
     model,
     train_loader,
-    optimizer,
+    step_fn: Callable,
     device: torch.device,
-    max_grad_norm: float,
-    noise_multiplier: float,
-    rho: float,
-    accountant,
-    sample_rate: float,
 ) -> Dict[str, float]:
     model.train()
     total_loss = 0.0
     total_acc = 0.0
     total = 0
 
-    # DP-SAM uses two DP gradient computations per step; this worsens privacy vs DP-SGD.
     for inputs, targets in train_loader:
-        inputs = inputs.to(device)
-        targets = targets.to(device)
-
-        optimizer.zero_grad(set_to_none=True)
-        logits = model(inputs)
-        losses = F.cross_entropy(logits, targets, reduction="none")
-        loss = losses.mean()
-        loss.backward()
-
-        dp_grads, _ = compute_dp_grads(model, max_grad_norm, noise_multiplier)
-        perturbations = sam_perturb_(model, dp_grads, rho)
-        if accountant is not None:
-            accountant.step(noise_multiplier=noise_multiplier, sample_rate=sample_rate)
-
-        optimizer.zero_grad(set_to_none=True)
-        clear_grad_samples(model)
-
-        logits_perturbed = model(inputs)
-        losses_perturbed = F.cross_entropy(logits_perturbed, targets, reduction="none")
-        loss_perturbed = losses_perturbed.mean()
-        loss_perturbed.backward()
-
-        dp_grads_2, _ = compute_dp_grads(model, max_grad_norm, noise_multiplier)
-        sam_restore_(model, perturbations)
-        apply_dp_grads(model, dp_grads_2)
-        optimizer.step()
-        if accountant is not None:
-            accountant.step(noise_multiplier=noise_multiplier, sample_rate=sample_rate)
-
-        optimizer.zero_grad(set_to_none=True)
-        clear_grad_samples(model)
-
-        batch_size = targets.size(0)
+        batch_loss, batch_acc, batch_size = step_fn((inputs, targets), device)
         total += batch_size
-        total_loss += float(loss.item()) * batch_size
-        total_acc += accuracy(logits, targets) * batch_size
+        total_loss += float(batch_loss) * batch_size
+        total_acc += float(batch_acc) * batch_size
 
     return {
         "train_loss": total_loss / max(1, total),

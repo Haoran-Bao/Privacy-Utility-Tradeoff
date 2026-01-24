@@ -5,14 +5,14 @@ import torch
 
 from src.data.cifar10 import build_datasets, build_loaders
 from src.data.split import build_mia_loaders
-from src.dp.accounting import create_accountant, default_delta, get_accountant_epsilon, get_sample_rate
+from src.dp.accounting import default_delta, find_noise_multiplier, get_accountant_epsilon, get_sample_rate
 from src.dp.opacus_engine import get_epsilon, make_private, make_private_with_epsilon
 from src.mia.eval import evaluate_mia
 from src.models.factory import create_model
-from src.optim.dp_sam import wrap_model_for_grad_sample
+from src.optim.dp_sam import build_dpsat_components
 from src.optim.dp_sgd import build_sgd
 from src.optim.sam import SAM
-from src.train.loop import evaluate, train_epoch_dp_sam, train_epoch_dp_sgd, train_epoch_sam_non_dp
+from src.train.loop import evaluate, train_epoch_dp_sgd, train_epoch_sam_non_dp, train_epoch_with_step_fn
 from src.utils.checkpoint import save_checkpoint
 from src.utils.logging import log_jsonl
 from src.utils.seed import resolve_device, set_seed
@@ -62,6 +62,7 @@ def run_experiment(cfg: Dict, run_id: Optional[str] = None) -> str:
     allow_non_dp = bool(cfg.get("dp_sam", {}).get("allow_non_dp", False))
 
     use_non_dp_sam = False
+    dpsat_step_fn = None
 
     if method == "dp_sgd":
         if privacy_mode == "target_epsilon":
@@ -89,12 +90,23 @@ def run_experiment(cfg: Dict, run_id: Optional[str] = None) -> str:
                 max_grad_norm=max_grad_norm,
                 poisson_sampling=False,
             )
-    elif method == "dp_sam":
+    elif method in {"dp_sam", "dpsat"}:
         if privacy_mode == "target_epsilon":
-            raise NotImplementedError("DP-SAM target_epsilon mode is TODO; use fixed_noise.")
+            steps = int(cfg.get("epochs", 1)) * len(train_loader) * 2
+            noise_multiplier = find_noise_multiplier(
+                target_epsilon=float(dp_cfg.get("target_epsilon", 5.0)),
+                target_delta=_get_delta(cfg, len(train_set)),
+                sample_rate=sample_rate,
+                steps=steps,
+            )
+            dp_cfg["noise_multiplier"] = float(noise_multiplier)
+            cfg["dp"] = dp_cfg
         try:
-            model = wrap_model_for_grad_sample(model)
-            accountant = create_accountant()
+            model, optimizer, train_loader, accountant, dpsat_step_fn = build_dpsat_components(
+                model=model,
+                train_loader=train_loader,
+                cfg=cfg,
+            )
         except Exception as exc:
             if not allow_non_dp:
                 raise RuntimeError(
@@ -136,17 +148,7 @@ def run_experiment(cfg: Dict, run_id: Optional[str] = None) -> str:
                 train_metrics = train_epoch_sam_non_dp(model, train_loader, optimizer, device)
                 epsilon = float("nan")
             else:
-                train_metrics = train_epoch_dp_sam(
-                    model=model,
-                    train_loader=train_loader,
-                    optimizer=optimizer,
-                    device=device,
-                    max_grad_norm=max_grad_norm,
-                    noise_multiplier=noise_multiplier,
-                    rho=float(cfg.get("sam", {}).get("rho", 0.05)),
-                    accountant=accountant,
-                    sample_rate=sample_rate,
-                )
+                train_metrics = train_epoch_with_step_fn(model, train_loader, dpsat_step_fn, device)
                 epsilon = get_accountant_epsilon(accountant, delta) if accountant else float("nan")
 
         test_metrics = evaluate(model, test_loader, device)
@@ -177,7 +179,7 @@ def run_experiment(cfg: Dict, run_id: Optional[str] = None) -> str:
             "epsilon_target_or_noise_multiplier": eps_or_noise,
             "max_grad_norm": max_grad_norm,
         }
-        if method == "dp_sam":
+        if method in {"dp_sam", "dpsat"}:
             record["rho"] = float(cfg.get("sam", {}).get("rho", 0.05))
 
         log_jsonl(metrics_path, record)
