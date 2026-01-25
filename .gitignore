@@ -1,5 +1,9 @@
 # Output artifacts
 outputs/
 
+# But Output/figures should be kept
+!outputs/figures/
+
+
 # Downloaded datasets
 data/
