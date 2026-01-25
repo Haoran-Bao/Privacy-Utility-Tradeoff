@@ -3,7 +3,9 @@ outputs/
 
 # But Output/figures should be kept
 !outputs/figures/
-
+!outputs/figures/*
+!outputs/figures_sweep/
+!outputs/figures_sweep/*
 
 # Downloaded datasets
 data/
